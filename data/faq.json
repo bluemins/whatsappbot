@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "product_1l",
+      "patterns": [
+        "1l",
+        "one liter",
+        "1 litre",
+        "largest",
+        "family|bulk"
+      ],
+      "answer": "**1L Bluemins Box** 📦\nPerfect for families or bulk orders!\n• Price: ₹100\n• Best for: Home use, offices, events\n• Fresh, premium quality\n\nWould you like to order?"
+    },
+    {
+      "id": "product_500ml",
+      "patterns": [
+        "500ml",
+        "500 ml",
+        "half liter",
+        "medium"
+      ],
+      "answer": "**500ml Bluemins Box** 📦\nGreat for daily use or small gatherings.\n• Price: ₹150\n• Best for: Individuals, small groups\n• Pure, refreshing taste\n\nReady to place an order?"
+    },
+    {
+      "id": "product_250ml",
+      "patterns": [
+        "250ml",
+        "250 ml",
+        "quarter liter",
+        "small|portable|travel|marriage"
+      ],
+      "answer": "**250ml Bluemins Box** 📦\nPortable and convenient!\n• Price: ₹160\n• Best for: On-the-go, tasting, single servings\n• Perfect travel companion\n\nWant to try it?"
+    },
+    {
+      "id": "pricing",
+      "patterns": [
+        "price",
+        "cost",
+        "how much",
+        "expensive",
+        "cheap|affordable",
+        "comparison"
+      ],
+      "answer": "**Bluemins Pricing** 💰\n• 250ml: ₹160\n• 500ml: ₹150\n• 1L: ₹100\n\nBest value? The 1L box! Which size interests you?"
+    },
+    {
+      "id": "delivery",
+      "patterns": [
+        "deliver(y)?",
+        "ship(ping)?",
+        "how long",
+        "fast",
+        "shipping"
+      ],
+      "answer": "**Delivery Info** 🚚\n• Standard delivery: 1-2 business days\n• Free delivery on orders above ₹300\n• Track your order via SMS\n• Available in your area\n\nWant to place an order?"
+    },
+    {
+      "id": "business_hours",
+      "patterns": [
+        "hours",
+        "open(ing)?( hours)?",
+        "when.*open",
+        "close|closing",
+        "what time.*open",
+        "what time.*close",
+        "available"
+      ],
+      "answer": "**Business Hours** 🕐\n${BRAND_NAME} is ${BRAND_HOURS_STATUS}\nMon–Sat: 9:00 AM – 9:00 PM\nSun: Closed\n(Timezone: ${BRAND_TIMEZONE})\n\nHow can I help?"
+    },
+    {
+      "id": "location_address",
+      "patterns": [
+        "address",
+        "location",
+        "where.*you",
+        "how.*get there",
+        "visit",
+        "come"
+      ],
+      "answer": "**Our Location** 📍\n${BRAND_NAME}\n${BRAND_ADDRESS}\n\nPhone: ${BRAND_PHONE}\n\nWe also deliver! Order now for home delivery."
+    },
+    {
+      "id": "quality_freshness",
+      "patterns": [
+        "fresh",
+        "quality",
+        "safe",
+        "pure",
+        "hygien",
+        "clean"
+      ],
+      "answer": "**Quality Assurance** ✅\n• 100% pure and premium\n• Tested for freshness and safety\n• Sealed, hygienic boxes\n• Non-GMO & naturally sourced\n• No artificial additives\n\nReady to experience Bluemins?"
+    },
+    {
+      "id": "ingredients",
+      "patterns": [
+        "ingredient",
+        "what.*in it",
+        "contain",
+        "made from",
+        "composed of"
+      ],
+      "answer": "**Ingredients** 🌿\nBlueMins is made from premium natural ingredients:\n• Pure water\n• Natural flavoring\n• Vitamins & minerals\n• No artificial preservatives\n\nWe're committed to transparency. Any specific concerns?"
+    },
+    {
+      "id": "allergen_dietary",
+      "patterns": [
+        "allerg(y|ies)",
+        "vegetarian|vegan",
+        "gluten",
+        "dairy",
+        "nut|nuts",
+        "sugar",
+        "contain.*not"
+      ],
+      "answer": "**Allergen & Dietary Info** ⚠️\n• Vegetarian & Vegan friendly\n• Gluten-free\n• Dairy-free\n• No common allergens\n• Low sugar option available\n\nFor severe allergies, let me know and we'll confirm details with our team!"
+    },
+    {
+      "id": "payment_methods",
+      "patterns": [
+        "pay",
+        "payment",
+        "card|credit",
+        "upi",
+        "cash",
+        "gpay|phonepe",
+        "accept"
+      ],
+      "answer": "**Payment Methods** 💳\nWe accept:\n• UPI (Google Pay, PhonePe, BHIM)\n• Debit/Credit Card\n• Wallets (PayTM, Amazon Pay)\n• Cash on Delivery\n\nWhich works best for you?"
+    },
+    {
+      "id": "return_refund",
+      "patterns": [
+        "return|refund",
+        "money back",
+        "damaged",
+        "guarantee",
+        "satisfaction",
+        "exchange"
+      ],
+      "answer": "**Returns & Refunds** 🔄\n• Full refund if damaged upon delivery\n• 7-day satisfaction guarantee\n• No questions asked return policy\n• Easy exchange process\n\nWe stand behind our product quality!"
+    },
+    {
+      "id": "subscription",
+      "patterns": [
+        "subscri",
+        "repeat|recurring",
+        "regular|monthly",
+        "auto.*deliver",
+        "subscription"
+      ],
+      "answer": "**Subscription Orders** 📅\nWe offer flexible recurring delivery:\n• Weekly, bi-weekly, or monthly\n• Save 10% on subscription orders\n• Skip or pause anytime\n• No hidden charges\n\nInterested in setting up?"
+    },
+    {
+      "id": "bulk_wholesale",
+      "patterns": [
+        "bulk",
+        "wholesale|reseller",
+        "corporate|office",
+        "event",
+        "quantity discount",
+        "large order"
+      ],
+      "answer": "**Bulk & Wholesale** 📦\nWe offer special pricing for:\n• Corporate orders\n• Events & parties\n• Resellers & retailers\n• Large quantities (50+ units)\n\nLet me connect you with our business team! What quantity are you looking for?"
+    },
+    {
+      "id": "environmental",
+      "patterns": [
+        "eco|environment|sustain",
+        "plastic|packaging",
+        "recycle|recycling",
+        "green|carbon"
+      ],
+      "answer": "**Eco-Friendly** 🌍\nBlueMins is committed to sustainability:\n• Recyclable packaging\n• Minimal plastic use\n• Carbon-neutral delivery options\n• Supporting local sourcing\n\nThanks for caring about the environment!"
+    },
+    {
+      "id": "contact_support",
+      "patterns": [
+        "contact|email|call",
+        "support|help",
+        "customer service",
+        "speak to|talk to",
+        "human|representative|manager"
+      ],
+      "answer": "**Contact Us** 📞\nNeed to speak with someone?\n• Phone: ${BRAND_PHONE}\n• Email: support@bluemins.com\n• WhatsApp: Available 24/7\n\nOr I can loop in a team member right now! What's your issue?"
+    },
+    {
+      "id": "order_tracking",
+      "patterns": [
+        "track",
+        "where.*order",
+        "status",
+        "order.*arrived",
+        "delivery.*status",
+        "when.*arrive"
+      ],
+      "answer": "**Order Tracking** 📍\nAfter confirming your order:\n• You'll get an SMS with tracking link\n• Real-time delivery updates\n• Estimated delivery window\n• Driver contact info\n\nWhat's your order ID or order confirmation number?"
+    },
+    {
+      "id": "promo_discount",
+      "patterns": [
+        "promo|coupon|discount",
+        "offer|deal",
+        "code|code",
+        "special",
+        "save|saving"
+      ],
+      "answer": "**Current Offers** 🎉\n• First order: Use code WELCOME10 for 10% off\n• Subscription: 10% regular discount\n• Bulk orders: Special pricing available\n• Referral: ₹50 credit per friend\n\nWhat are you ordering?"
+    }
+  ]
+}
