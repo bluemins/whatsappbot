@@ -1,0 +1,19 @@
+{
+  "name": "whatsapp-agent-demo",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "openai": "^4.0.0",
+    "twilio": "^5.3.0",
+    "uuid": "^14.0.1"
+  }
+}
