@@ -20,7 +20,6 @@ export const STAGES = {
   ASK_NAME:    "ASK_NAME",
   ASK_PHONE:   "ASK_PHONE",
   ASK_ADDRESS: "ASK_ADDRESS",
-  ASK_NOTES:   "ASK_NOTES",
   CONFIRM:     "CONFIRM",
 };
 
@@ -389,8 +388,8 @@ const HANDLERS = {
   [STAGES.ASK_NAME]:    (t, s, f) => Promise.resolve(handleAskName(t, s)),
   [STAGES.ASK_PHONE]:   (t, s, f) => Promise.resolve(handleAskPhone(t, s)),
   [STAGES.ASK_ADDRESS]: (t, s, f) => Promise.resolve(handleAskAddress(t, s)),
-  [STAGES.ASK_NOTES]:   (t, s, f) => Promise.resolve(handleAskNotes(t, s)),
-  [STAGES.CONFIRM]:     handleConfirm,
+ // [STAGES.ASK_NOTES]:   (t, s, f) => Promise.resolve(handleAskNotes(t, s)),
+  [STAGES.CONFIRM]:     handleConfirm
 };
 
 export function startOrder(session) {
@@ -401,7 +400,9 @@ export function startOrder(session) {
 }
 
 export async function advanceOrder(text, session, from) {
+
   const handler = HANDLERS[session.stage];
+    console.warn("advanceOrder ---------- handler   --- ",handler );
   if (!handler) {
     console.warn(`Unknown session stage: ${session.stage} — resetting`);
     return { reply: MSG.FALLBACK, session: { stage: null, draft: {} } };

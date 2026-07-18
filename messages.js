@@ -35,8 +35,6 @@ export const MSG = {
 
   // ── Order flow ────────────────────────────────────────────
  // src/messages.js — updated strings for multi-item support
-  // ...existing messages unchanged above...
-
   ORDER_START:
     "Great! Let's place your order. 🛒\n\n" +
     "Which size(s) would you like?\n" +
@@ -67,18 +65,6 @@ export const MSG = {
   ASK_NAME:
     "Got it — *{{QTY_SUMMARY}}*. 👍\n\n" +
     "What is your *full name* for the order?",
-
- //{{NAME}} {{ITEMS_TABLE}} {{TOTAL}}
-  ASK_NOTES:
-    "Almost done! 🙌\n\n" +
-    "Here's your order so far:\n" +
-    "{{ITEMS_TABLE}}" +
-    "• *Name:* {{NAME}}\n" +
-    "• *Phone:* {{PHONE}}\n" +
-    "• *Address:* {{ADDRESS}}\n" +
-    "• *Total:* ₹{{TOTAL}}\n\n" +
-    "Any *special notes* (e.g. delivery time)?\n" +
-    "Type your note or reply *skip* to continue.",
 
   CONFIRM:
     "📦 *Order Summary*\n\n" +
