@@ -146,6 +146,7 @@ function handleIntent(intent, session) {
  */
 export async function route(text, session, from) {
   const trimmed = (text || "").trim();
+  console.warn("route ---------- stage   --- " , session.stage);
   console.warn("route ---------- trimmed   --- " );
   if (!trimmed) {
     return { reply: MSG.FALLBACK, newSession: session };
@@ -155,6 +156,7 @@ export async function route(text, session, from) {
   // If the customer is mid-order, every message goes to the state machine.
   // No keyword matching — the state machine owns the conversation.
   if (session.stage !== null) {
+    console.warn("route ---------- advanceOrder   --- " );
     const { reply, session: newSession } = await advanceOrder(trimmed, session, from);
     return { reply, newSession };
   }

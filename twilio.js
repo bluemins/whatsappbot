@@ -12,20 +12,20 @@ export function getTwilioClient() {
  * Validate Twilio webhook signature to prevent spoofed requests.
  * publicUrl must match EXACTLY what Twilio calls (scheme/host/path).
  */
-export function validateTwilioWebhook({ req, publicUrl }) {
-	const signature = req.headers["x-twilio-signature"];
-	if (!signature) return false;
+// export function validateTwilioWebhook({ req, publicUrl }) {
+// 	const signature = req.headers["x-twilio-signature"];
+// 	if (!signature) return false;
 
-	const authToken = process.env.TWILIO_AUTH_TOKEN;
-	return twilio.validateRequest(authToken, signature, publicUrl, req.body);
-}
+// 	const authToken = process.env.TWILIO_AUTH_TOKEN;
+// 	return twilio.validateRequest(authToken, signature, publicUrl, req.body);
+// }
 
 /**
  * Send a WhatsApp message via Twilio REST API.
  */
 export async function sendWhatsAppMessage({ to, body }) {
 	const client = getTwilioClient();
-	const from = process.env.WHATSAPP_FROM_NUMBER;
+	const from = process.env.TWILIO_WHATSAPP_FROM;
 	if (!from) throw new Error("Missing TWILIO_WHATSAPP_FROM");
 
 	return client.messages.create({
