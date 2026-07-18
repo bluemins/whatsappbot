@@ -23,6 +23,32 @@ export const STAGES = {
   CONFIRM:     "CONFIRM",
 };
 
+/**
+ * buildItemOrder(items)
+ * Returns a readable list: "1L, 500ml, 250ml"
+ * Used in error messages for positional quantity entry.
+ *
+ * @param {Array<{size}>} items
+ * @returns {string}
+ */
+function buildItemOrder(items) {
+  return items.map((i, idx) => `${idx + 1}. ${i.size}`).join(", ");
+}
+
+/**
+ * buildItemsBreakdown(items)
+ * Shows per-item line items with qty and price
+ * Format: "• 1L × 2 (₹200)\n• 500ml × 3 (₹450)\n"
+ *
+ * @param {Array<{size,price,qty}>} items
+ * @returns {string}
+ */
+function buildItemsBreakdown(items) {
+  return items
+    .map((i) => `• *${i.size}* × ${i.qty}  (₹${i.price * i.qty})\n`)
+    .join("");
+}
+
 // ── Multi-item size parser ────────────────────────────────────
 /**
 * parseSizes(text)
@@ -80,59 +106,154 @@ function buildItemsSummary(items) {
 // ── Multi-item quantity parser ────────────────────────────────
 /**
  * parseQuantities(text, items)
- * Parses quantities for one or more items.
+ * ─────────────────────────────────────────────────────────────
+ * Parse customer input and apply quantities to items.
  *
- * Handles:
- *   "2"                    → all items get qty 2
- *   "2 of 1L and 3 of 500ml" → per-item qty
- *   "2, 3"                 → first item=2, second item=3 (positional)
+ * Handles three input patterns:
  *
- * @param {string} text  - Raw customer message
- * @param {Array}  items - Items from draft (carries size/sku/price)
- * @returns {Array<{size,sku,price,qty}>|null} - null = failed to parse
+ *   1. SINGLE: "2" or "5"
+ *      → Apply qty to ALL items
+ *      → 1L × 2, 500ml × 2, 250ml × 2
+ *
+ *   2. NAMED: "2 of 1L and 3 of 500ml"
+ *            "2 1L, 3 500ml"
+ *            "1L: 2, 500ml: 3"
+ *      → Apply qty to NAMED items only
+ *      → 1L × 2, 500ml × 3, 250ml × [undefined]
+ *
+ *   3. POSITIONAL: "2, 3, 1"
+ *                  "2 3 1"
+ *      → Apply by order items are listed
+ *      → 1L × 2, 500ml × 3, 250ml × 1
+ *
+ * @param {string} text  - Customer input
+ * @param {Array}  items - Draft items with size/sku/price
+ * @returns {Object} { resolved, error, hint }
+ *   resolved: null or array of {size,sku,price,qty}
+ *   error: null or error message
+ *   hint: null or suggestion for retry
  */
 function parseQuantities(text, items) {
-  const lower = text.toLowerCase();
+  const lower = text.toLowerCase().trim();
 
-  // Single number → apply to all items (most common case: "2")
+  // Guard: Reject empty input
+  if (!text || !text.trim()) {
+    return {
+      resolved: null,
+      error: "Please enter a quantity.",
+      hint: "Try: 2 (for all) or 2 of 1L and 3 of 500ml"
+    };
+  }
+
+  // ── PATTERN 1: Single number → apply to all items ──────────
   const singleMatch = text.match(/^\s*(\d+)\s*$/);
   if (singleMatch) {
     const qty = parseInt(singleMatch[1], 10);
-    if (qty < 1 || qty > 100) return null;
-    return items.map(item => ({ ...item, qty }));
+
+    // Validate range
+    if (qty < 1 || qty > 100) {
+      return {
+        resolved: null,
+        error: `Invalid quantity: ${qty}. Must be 1–100.`,
+        hint: null
+      };
+    }
+
+    const resolved = items.map(item => ({ ...item, qty }));
+    return { resolved, error: null, hint: null };
   }
 
-  // Named quantities: "2 of 1L" or "3 of 500ml" or "2 1L"
-  // Build a result map keyed by sku
-  const result = new Map(items.map(i => [i.sku, { ...i, qty: null }]));
+  // ── PATTERN 2: Named quantities ────────────────────────────
+  // Matches: "2 of 1L", "3 500ml", "1L: 2", etc.
+  const result = new Map(
+    items.map(i => [i.sku, { ...i, qty: null }])
+  );
 
-  // Pattern: optional "N of SIZE" or "N SIZE" — captures number + size label
-  const namedPattern = /(\d+)\s*(?:of\s*)?(1l|500ml|250ml|1\s*liter|half\s*liter)/gi;
+  // Regex for: "N of SIZE" or "N SIZE" or "SIZE: N"
+  const namedPattern = /(\d+)\s*(?:of\s*)?(1l|500ml|250ml|1\s*liter|half\s*liter)|(\d+)(?:\s+of\s+)?(?:1l|500ml|250ml|1\s*liter|half\s*liter)/gi;
+  let matchFound = false;
   let match;
+
   while ((match = namedPattern.exec(lower)) !== null) {
-    const qty  = parseInt(match[1], 10);
-    const size = match[2].replace(/\s/g, "").replace("1liter", "1l").replace("halfliter", "500ml");
+    const qty  = parseInt(match[1] || match[3], 10);
+    let size   = (match[2] || "").toLowerCase();
+
+    // Normalize size strings
+    size = size
+      .replace(/\s/g, "")
+      .replace("1liter", "1l")
+      .replace("halfliter", "500ml")
+      .replace("liter", "l");
+
     const product = PRODUCTS[size];
+    
     if (product && result.has(product.sku)) {
-      result.get(product.sku).qty = qty;
-    }
-  }
-
-  // Positional fallback: "2, 3" → first item=2, second=3
-  if ([...result.values()].some(i => i.qty === null)) {
-    const positional = [...text.matchAll(/\b(\d+)\b/g)].map(m => parseInt(m[1], 10));
-    let idx = 0;
-    for (const item of result.values()) {
-      if (item.qty === null && idx < positional.length) {
-        item.qty = positional[idx++];
+      // Validate qty range
+      if (qty < 1 || qty > 100) {
+        return {
+          resolved: null,
+          error: `Invalid quantity for ${size}: ${qty}. Must be 1–100.`,
+          hint: null
+        };
       }
+
+      result.get(product.sku).qty = qty;
+      matchFound = true;
     }
   }
 
-  // Validate all items have a qty
-  const resolved = [...result.values()];
-  if (resolved.some(i => !i.qty || i.qty < 1 || i.qty > 100)) return null;
-  return resolved;
+  // If named pattern matched, check if all items got quantities
+  if (matchFound) {
+    const resolved = [...result.values()];
+    const missingQty = resolved.filter(i => i.qty === null);
+
+    if (missingQty.length > 0) {
+      return {
+        resolved: null,
+        error: `Missing quantity for: ${missingQty.map(i => i.size).join(", ")}`,
+        hint: `Try: 2 of 1L and 3 of 500ml and 1 of 250ml`
+      };
+    }
+
+    return { resolved, error: null, hint: null };
+  }
+
+  // ── PATTERN 3: Positional quantities ──────────────────────
+  // Matches: "2, 3, 1" or "2 3 1"
+  const positional = [
+    ...text.matchAll(/\b(\d+)\b/g)
+  ].map(m => parseInt(m[1], 10));
+
+  if (positional.length > 0) {
+    // Validate: correct number of quantities for items
+    if (positional.length !== items.length) {
+      return {
+        resolved: null,
+        error: `Expected ${items.length} quantities, got ${positional.length}`,
+        hint: buildItemOrder(items) + ` → Try: ${items.map(() => "2").join(", ")}`
+      };
+    }
+
+    // Apply positional quantities
+    const resolved = items.map((item, idx) => {
+      const qty = positional[idx];
+      
+      if (qty < 1 || qty > 100) {
+        throw new Error(`Invalid quantity at position ${idx + 1}: ${qty}`);
+      }
+
+      return { ...item, qty };
+    });
+
+    return { resolved, error: null, hint: null };
+  }
+
+  // ── No pattern matched ──────────────────────────────────────
+  return {
+    resolved: null,
+    error: `I didn't understand: "${text}"`,
+    hint: `Try: 2 (all items), 2 of 1L and 3 of 500ml, or 2, 3, 1`
+  };
 }
 
 /**
@@ -184,6 +305,7 @@ function handleAskSize(text, session) {
   }
 
   const products = parseSizes(text);
+  console.log(`🔍 parseSizes("${text}") →`, products.map(p => p.sku));   // ← add this
 
   if (products.length === 0) {
     return { reply: MSG.SIZE_INVALID, session };
@@ -206,9 +328,7 @@ function handleAskSize(text, session) {
 }
 
 /**
- * handleAskQty
- * Parses quantity and applies it to draft.items[].qty
- * Supports: single number (applies to all), or per-item "2 of 1L and 3 of 500ml"
+ * handleAskQty — UPDATED with better error feedback
  */
 function handleAskQty(text, session) {
   if (isCancelIntent(text)) {
@@ -216,56 +336,38 @@ function handleAskQty(text, session) {
   }
 
   const items = session.draft.items;
+  const itemOrder = buildItemOrder(items);
 
-  // Single number → apply to all items (most common: customer types "2")
-  const singleMatch = text.trim().match(/^(\d+)$/);
-  if (singleMatch) {
-    const qty = parseInt(singleMatch[1], 10);
-    if (qty < 1 || qty > 100) return { reply: MSG.QTY_INVALID, session };
+  // Parse quantities with detailed error handling
+  const { resolved, error, hint } = parseQuantities(text, items);
 
-    const resolved = items.map(item => ({ ...item, qty }));
-    const qtySummary = resolved.map(i => `${i.size} × ${i.qty}`).join(", ");
-
+  if (error) {
+    // Show error + hint for retry
+    const hintLine = hint ? `\n💡 ${hint}` : "";
     return {
-      reply: formatMsg(MSG.ASK_NAME, { QTY_SUMMARY: qtySummary }),
-      session: { ...session, stage: STAGES.ASK_NAME, draft: { ...session.draft, items: resolved } },
+      reply: `❌ ${error}${hintLine}`,
+      session
     };
   }
 
-  // Per-item qty: "2 of 1L and 3 of 500ml" or positional "2, 3"
-  const resolved = [...items]; // clone
-  let matchedAny = false;
+  // ✅ All quantities validated and applied
+  const qtySummary = resolved
+    .map(i => `${i.size} × ${i.qty}`)
+    .join(", ");
 
-  // Named pattern: "N of SIZE" or "N SIZE"
-  const namedRe = /(\d+)\s*(?:of\s*)?(1l|500ml|250ml)/gi;
-  let m;
-  while ((m = namedRe.exec(text.toLowerCase())) !== null) {
-    const qty  = parseInt(m[1], 10);
-    const key  = m[2]; // "1l", "500ml", "250ml"
-    const prod = PRODUCTS[key];
-    if (prod) {
-      const idx = resolved.findIndex(i => i.sku === prod.sku);
-      if (idx !== -1) { resolved[idx] = { ...resolved[idx], qty }; matchedAny = true; }
-    }
-  }
+  const itemsBreakdown = buildItemsBreakdown(resolved);
+  const total = calcTotal(resolved);
 
-  // Positional fallback: "2, 3" → first item gets 2, second gets 3
-  if (!matchedAny) {
-    const nums = [...text.matchAll(/\b(\d+)\b/g)].map(x => parseInt(x[1], 10));
-    nums.forEach((qty, idx) => {
-      if (idx < resolved.length) resolved[idx] = { ...resolved[idx], qty };
-    });
-    matchedAny = nums.length > 0;
-  }
-
-  // Validate all items now have a valid qty
-  const allValid = resolved.every(i => i.qty && i.qty >= 1 && i.qty <= 100);
-  if (!matchedAny || !allValid) return { reply: MSG.QTY_INVALID, session };
-
-  const qtySummary = resolved.map(i => `${i.size} × ${i.qty}`).join(", ");
   return {
-    reply: formatMsg(MSG.ASK_NAME, { QTY_SUMMARY: qtySummary }),
-    session: { ...session, stage: STAGES.ASK_NAME, draft: { ...session.draft, items: resolved } },
+    reply: formatMsg(MSG.QTY_CONFIRM, {
+      ITEMS_BREAKDOWN: itemsBreakdown,
+      TOTAL: total
+    }),
+    session: {
+      ...session,
+      stage: STAGES.ASK_NAME,
+      draft: { ...session.draft, items: resolved }
+    }
   };
 }
 
@@ -311,19 +413,27 @@ function handleAskAddress(text, session) {
   if (isCancelIntent(text)) {
     return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
   }
-  const address = text.trim();
-  if (address.length < 10) {
-    return { reply: "Please provide a more complete address (street, area, city).", session };
-  }
+  // const address = text.trim();
+  // if (address.length < 10) {
+  //   return { reply: "Please provide a more complete address (street, area, city).", session };
+  // }
   const { items, name, phone } = session.draft;
   const total = calcTotal(items);
+  const notes = session.draft.notes || "None";
 
   return {
-    reply: formatMsg( {
+    reply: formatMsg(MSG.CONFIRM, {
       ITEMS_TABLE: buildItemsTable(items),
-      NAME: name, PHONE: phone, ADDRESS: address, TOTAL: total
+      NAME: name,
+      PHONE: phone,
+      ADDRESS: text,
+      TOTAL: total,
     }),
-    session: { ...session, draft: { ...session.draft, address } },
+    session: {
+      ...session,
+      stage: STAGES.CONFIRM,
+      draft: { ...session.draft, text, notes },
+    },
   };
 }
 
@@ -388,7 +498,6 @@ const HANDLERS = {
   [STAGES.ASK_NAME]:    (t, s, f) => Promise.resolve(handleAskName(t, s)),
   [STAGES.ASK_PHONE]:   (t, s, f) => Promise.resolve(handleAskPhone(t, s)),
   [STAGES.ASK_ADDRESS]: (t, s, f) => Promise.resolve(handleAskAddress(t, s)),
- // [STAGES.ASK_NOTES]:   (t, s, f) => Promise.resolve(handleAskNotes(t, s)),
   [STAGES.CONFIRM]:     handleConfirm
 };
 

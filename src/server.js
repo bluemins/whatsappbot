@@ -199,13 +199,14 @@ app.post("/twilio/whatsapp", async (req, res) => {
 	// Deterministic dispatcher — no AI, pure regex + state machine.
 	let reply;
 	let newSession;
+  
 	try {
 		({ reply, newSession } = await route(userText, session, from));
 	} catch (err) {
 		console.error(`❌ Router error for ${from}:`, err.message);
 		// Generic fallback — don't expose internal errors to customers
 		reply = "Sorry, something went wrong. Please try again. 🙏";
-		newSession = session; // preserve existing session state on error
+		newSession = { stage: null, draft: {} };
 	}
 
 	// ── Step 6: Persist updated session to Redis ─────────────

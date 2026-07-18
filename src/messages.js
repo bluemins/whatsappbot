@@ -38,41 +38,77 @@ export const MSG = {
   ORDER_START:
     "Great! Let's place your order. 🛒\n\n" +
     "Which size(s) would you like?\n" +
-    "Reply with *numbers* or *sizes* — you can pick multiple!\n\n" +
+    "You can pick multiple! Reply with *numbers* or *sizes*:\n\n" +
     "1️⃣  1L     — ₹100\n" +
     "2️⃣  500ml  — ₹150\n" +
     "3️⃣  250ml  — ₹160\n\n" +
-    "Examples: *1* or *1 and 2* or *1L and 500ml*",
+    "Try: reply 1 for 1L \n "+
+    "Try: reply 1 and 3 for 1L and 250ml \n"+
+     "Try: reply 3 for 250ml \n",
 
   SIZE_INVALID:
     "Please pick one or more sizes:\n\n" +
     "1️⃣  1L     — ₹100\n" +
     "2️⃣  500ml  — ₹150\n" +
     "3️⃣  250ml  — ₹160\n\n" +
-    "Try: *1*, *1 and 3*, or *1L, 250ml*",
+    "Try: reply 1 *for 1L* \n"+
+    "Try: reply 1 and 3 *for 1L and 250ml* \n"+
+     "Try: reply 3 *for 250ml* \n",
 
-  // {{ITEMS_SUMMARY}} is e.g. "1L × 2 + 500ml × 1"
+// ✅ NEW: Clear examples of quantity options
   ASK_QTY:
     "You chose: *{{ITEMS_SUMMARY}}* ✅\n\n" +
-    "How many boxes would you like? (e.g. *2*)\n" +
-    "Same qty for all, or specify: *2 of 1L and 3 of 500ml*",
+    "How many boxes for each?\n\n" +
+    "**Option 1 — Same for all:**\n" +
+    "   Reply: 2  → All items get 2 boxes\n\n" +
+    "**Option 2 — Different for each:**\n" +
+    "   Reply: 2 of 1L and 3 of 500ml\n" +
+    "   Or: *1L: 2, 500ml: 3*\n\n" +
+    "**Option 3 — By position:**\n" +
+    "   Reply: 2, 3  → First item gets 2, second gets 3\n\n" +
+    "(Each item: 1–100 boxes)",
 
   QTY_INVALID:
-    "Please enter valid quantities (numbers between 1–100).\n" +
-    "Example: *2* (applies to all) or *2 of 1L and 3 of 500ml*",
+    "I didn't understand that. 🤔\n\n" +
+    "Please reply with:\n" +
+    "• *2*  — all items get 2 boxes\n" +
+    "• *2 of 1L and 3 of 500ml*  — different amounts\n" +
+    "• *2, 3*  — by position (order: {{ITEMS_ORDER}})\n\n" +
+    "Or type *cancel* to start over.",
+
+  // ✅ NEW: Show per-item breakdown before confirming name
+  QTY_CONFIRM:
+    "Perfect! Here's your selection:\n\n" +
+    "{{ITEMS_BREAKDOWN}}" +
+    "————————————————————\n" +
+    "📊 *Subtotal: ₹{{TOTAL}}*\n\n" +
+    "What is your *full name* for the order?",
 
   // {{QTY_SUMMARY}} e.g. "1L × 2, 500ml × 3"
   ASK_NAME:
     "Got it — *{{QTY_SUMMARY}}*. 👍\n\n" +
     "What is your *full name* for the order?",
 
+    // insert after ASK_NAME, before CONFIRM
+   ASK_PHONE:
+  "Thanks, *{{NAME}}*! 📱\n\n" +
+  "What's the best phone number to reach you on?\n" +
+  "(10-digit number, with or without country code)",
+
+  PHONE_INVALID:
+  "That doesn't look like a valid phone number. 🤔\n" +
+  "Please enter a 10-digit number (e.g. *9876543210*).",
+
+  ASK_ADDRESS:
+  "Got it! 📍\n\n" +
+  "What's your full delivery address? (street, area, city)",
+
   CONFIRM:
-    "📦 *Order Summary*\n\n" +
+    "📦 *Please confirm the Order - Below is the captured information *\n\n" +
     "{{ITEMS_TABLE}}" +
     "• Name:    {{NAME}}\n" +
     "• Phone:   {{PHONE}}\n" +
     "• Address: {{ADDRESS}}\n" +
-    "• Notes:   {{NOTES}}\n" +
     "• *Total:  ₹{{TOTAL}}*\n\n" +
     "Reply *yes* to confirm or *no* to cancel.",
 

@@ -10,20 +10,19 @@ import twilio from "twilio";
  */
 export function getTwilioClient() {
 	const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
-	
+	console.log(`TWILIO_ACCOUNT_SID:  `,process.env.TWILIO_ACCOUNT_SID);
+	console.log(`TWILIO_AUTH_TOKEN:  `,process.env.TWILIO_AUTH_TOKEN);
 	// Validate credentials are real (not placeholder X's)
-	if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+	if (TWILIO_ACCOUNT_SID.includes("X") || TWILIO_AUTH_TOKEN.includes("X")) {
 		throw new Error(
 			"❌ Missing Twilio credentials. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in .env"
 		);
 	}
 
 	// Warn if credentials look like placeholders (safety check)
-	if (TWILIO_ACCOUNT_SID || TWILIO_AUTH_TOKEN) {
+	if (TWILIO_ACCOUNT_SID.includes("X") || TWILIO_AUTH_TOKEN.includes("X")) {
 		console.error(
-			"⚠️  CRITICAL: Twilio credentials appear to be placeholders (contain 'X'). " +
-			"Replace with real values from https://console.twilio.com/account"
-		);
+			"⚠️  CRITICAL: Twilio credentials appear to be placeholders (contain 'X'). ");
 	}
 
 	return twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
