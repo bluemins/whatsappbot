@@ -1,200 +1,208 @@
 /**
- * server.js - Express server with WhatsApp (Twilio) integration
- * Run: node server.js
+ * server.js
+ * ─────────────────────────────────────────────────────────────
+ * Express server — Twilio WhatsApp webhook handler.
+ * No AI calls. All logic lives in router.js → orderFlow.js.
+ *
+ * Request lifecycle:
+ *   POST /twilio/whatsapp
+ *     ↓  validate Twilio signature
+ *     ↓  deduplicate (MessageSid check via Redis)
+ *     ↓  getSession(from)       ← Redis
+ *     ↓  route(text, session, from)  ← deterministic dispatcher
+ *     ↓  setSession(from, newSession) ← Redis
+ *     ↓  Twilio REST → send reply
+ *     ↓  200 OK
+ * ─────────────────────────────────────────────────────────────
  */
 
-import express from "express";
-import twilio from "twilio";
-import { runAgent } from "./agent.js";
-import dotenv from "dotenv";
-import { validateTwilioWebhook } from "./twilio.js";
+import express  from "express";
+import twilio   from "twilio";
+import dotenv   from "dotenv";
 
+import { validateTwilioWebhook } from "./twilio.js";
+import { getSession, setSession, clearSession, closeRedis } from "./session.js";
+import { route }                 from "./router.js";
+
+// Load .env before accessing any process.env values
 dotenv.config();
 
+// ── Express setup ─────────────────────────────────────────────
 const app = express();
+
+// Twilio sends webhook bodies as URL-encoded form data
 app.use(express.urlencoded({ extended: false }));
 
-// Simple in-memory session store
-// TODO: Replace with Redis or database in production
-const sessions = {};
+// ── In-memory dedup set (MessageSid) ─────────────────────────
+// Twilio may re-deliver a webhook if your server is slow to respond.
+// We track processed MessageSids in a bounded Set (last 1000).
+// For production scale, push this into Redis with a short TTL.
+const processed = new Set();
+const MAX_DEDUP_SIZE = 1000;
 
-function getOrCreateSession(from) {
-	if (!sessions[from]) {
-		sessions[from] = {
-			flow: null,
-			orderDraft: {},
-			history: []
-		};
-	}
-	return sessions[from];
+function hasProcessed(sid) { return processed.has(sid); }
+function markProcessed(sid) {
+  // Evict oldest entries if the set grows too large
+  if (processed.size >= MAX_DEDUP_SIZE) {
+    const first = processed.values().next().value;
+    processed.delete(first);
+  }
+  processed.add(sid);
 }
 
-// Webhook endpoint for WhatsApp messages
+// ── Twilio client (reused across requests) ────────────────────
+function getTwilioClient() {
+  return twilio(
+    process.env.TWILIO_ACCOUNT_SID,
+    process.env.TWILIO_AUTH_TOKEN
+  );
+}
+
+/**
+ * sendReply(to, body)
+ * Send a WhatsApp message via Twilio REST API.
+ * Throws on failure so the caller can handle fallback.
+ *
+ * @param {string} to   - WhatsApp number (e.g. "whatsapp:+91XXXXXXXXXX")
+ * @param {string} body - Message text
+ */
+async function sendReply(to, body) {
+  const from = process.env.TWILIO_WHATSAPP_FROM;
+  if (!from) throw new Error("TWILIO_WHATSAPP_FROM is not set");
+
+  await getTwilioClient().messages.create({ from, to, body });
+}
+
+// ── Webhook handler ───────────────────────────────────────────
 app.post("/twilio/whatsapp", async (req, res) => {
-	const isValid = validateTwilioWebhook({
-	req,
-	publicUrl: process.env.PUBLIC_WEBHOOK_URL,
-	});
-	if (!isValid) return res.sendStatus(403); // Reject spoofed requests
-	
-	const { Body: userText, From: from } = req.body;
 
-	console.log(`📱 Message from ${from}: ${userText}`);
+  // ── Step 1: Validate Twilio signature ──────────────────────
+  // Rejects any POST not originating from Twilio's servers.
+  const isValid = validateTwilioWebhook({
+    req,
+    publicUrl: process.env.PUBLIC_WEBHOOK_URL + "/twilio/whatsapp",
+  });
 
-	// Validate request
-	if (!userText || !from) {
-		return res.sendStatus(400).end();
-	}
+  if (!isValid) {
+    console.warn("⚠️  Rejected request — invalid Twilio signature");
+    return res.sendStatus(403);
+  }
 
-	let session = getOrCreateSession(from);
-	console.log("session ------ ", session );
-let reply = `You are the WhatsApp assistant for Bluemins — a premium beverage brand.
-Our products:
-• 1L Bluemins Box  - ₹100
-• 500ml Bluemins Box - ₹150
-• 250ml Bluemins Box - ₹160
+  // ── Step 2: Extract message fields ─────────────────────────
+  const { Body: rawText, From: from, MessageSid: sid } = req.body;
 
-You can:
-1) Answer product questions (sizes, pricing, details, freshness).
-2) Start an order flow (when user wants to buy).
-3) Answer FAQs (delivery time, return policy, payment methods).
-4) Start human handoff for special requests.`
+  // Validate required fields exist
+  if (!rawText || !from || !sid) {
+    console.warn("⚠️  Missing Body, From, or MessageSid in webhook payload");
+    return res.sendStatus(400);
+  }
 
-		// Run the Bluemins agent
-		//const { reply, newSession } = await runAgent({ from, userText, session });
+  const userText = rawText.trim();
+  console.log(`📱 [${sid}] from ${from}: ${userText}`);
 
-		// Update session for next message
-		//sessions[from] = newSession;
+  // ── Step 3: Deduplicate (Twilio can retry on slow responses) ──
+  if (hasProcessed(sid)) {
+    console.log(`⏭️  Duplicate message ${sid} — skipping`);
+    // Return 200 so Twilio stops retrying
+    return res.sendStatus(200);
+  }
 
-		// Send response back to user
-		const client = twilio(
-			process.env.TWILIO_ACCOUNT_SID,
-			process.env.TWILIO_AUTH_TOKEN
-		);
+  // Acknowledge to Twilio immediately to prevent retries (5s timeout)
+  // We do the heavy work after sending 200.
+  res.sendStatus(200);
+  markProcessed(sid);
 
-		await client.messages.create({
-			from: process.env.WHATSAPP_FROM_NUMBER,
-			to: from,
-			body: reply
-		});
+  // ── Step 4: Fetch session from Redis ──────────────────────
+  let session;
+  try {
+    session = await getSession(from);
+  } catch (err) {
+    console.error("❌ Redis getSession failed:", err.message);
+    // Continue with empty session — degraded but functional
+    session = { stage: null, draft: {} };
+  }
 
-		console.log(`✅ Reply sent to ${from}`);
-	try {
-if(session == null )
-{
-		reply = `You are the WhatsApp assistant for Bluemins — a premium beverage brand.
-Our products:
-• 1L Bluemins Box  - ₹100
-• 500ml Bluemins Box - ₹150
-• 250ml Bluemins Box - ₹160
+  // ── Step 5: Route message → get reply ────────────────────
+  let reply;
+  let newSession;
 
-You can:
-1) Answer product questions (sizes, pricing, details, freshness).
-2) Start an order flow (when user wants to buy).
-3) Answer FAQs (delivery time, return policy, payment methods).
-4) Start human handoff for special requests.`
+  try {
+    ({ reply, newSession } = await route(userText, session, from));
+  } catch (err) {
+    console.error("❌ Router error:", err.message);
+    reply      = "Sorry, something went wrong. Please try again. 🙏";
+    newSession = session; // preserve existing session on error
+  }
 
-		// Run the Bluemins agent
-		//const { reply, newSession } = await runAgent({ from, userText, session });
+  // ── Step 6: Persist updated session to Redis ─────────────
+  try {
+    // If newSession.stage is null and draft is empty, clear the key
+    // to avoid accumulating stale empty sessions in Redis
+    if (newSession.stage === null && Object.keys(newSession.draft || {}).length === 0) {
+      await clearSession(from);
+    } else {
+      await setSession(from, newSession);
+    }
+  } catch (err) {
+    // Non-fatal — the reply is already queued; log and continue
+    console.error("❌ Redis setSession failed:", err.message);
+  }
 
-		// Update session for next message
-		//sessions[from] = newSession;
+  // ── Step 7: Send reply to customer via Twilio ────────────
+  try {
+    await sendReply(from, reply);
+    console.log(`✅ Reply sent to ${from}`);
+  } catch (err) {
+    console.error("❌ Twilio send failed:", err.message);
+    // At this point we can't send a fallback (reply channel is broken)
+    // Alert via logging / monitoring
+  }
+});
 
-		// Send response back to user
-		const client = twilio(
-			process.env.TWILIO_ACCOUNT_SID,
-			process.env.TWILIO_AUTH_TOKEN
-		);
+// ── Health check ──────────────────────────────────────────────
+app.get("/health", (req, res) => {
+  res.json({
+    status:    "ok",
+    service:   "Bluemins WhatsApp Bot",
+    timestamp: new Date().toISOString(),
+  });
+});
 
-		await client.messages.create({
-			from: process.env.WHATSAPP_FROM_NUMBER,
-			to: from,
-			body: reply
-		});
+// ── Root ──────────────────────────────────────────────────────
+app.get("/", (req, res) => {
+  res.json({ name: "Bluemins WhatsApp Bot", version: "2.0.0" });
+});
 
-		console.log(`✅ Reply sent to ${from}`);
-		//res.sendStatus(200).end(' ');
+// ── 404 handler ───────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found", path: req.path });
+});
+
+// ── Global error handler ──────────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error("Server error:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+// ── Start server ──────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("╔══════════════════════════════════════════╗");
+  console.log("║   🛒 Bluemins WhatsApp Bot  v2.0 (No-AI) ║");
+  console.log("╚══════════════════════════════════════════╝");
+  console.log(`\n📡 Port:     ${PORT}`);
+  console.log(`🏥 Health:   http://localhost:${PORT}/health`);
+  console.log(`📱 Webhook:  POST /twilio/whatsapp\n`);
+});
+
+// ── Graceful shutdown ─────────────────────────────────────────
+// Close Redis before process exits to avoid connection leaks
+async function shutdown(signal) {
+  console.log(`\n${signal} received — shutting down...`);
+  await closeRedis();
+  process.exit(0);
 }
 
-	} catch (error) {
-		console.error("❌ Error:", error.message);
-
-		// Send fallback message to user
-		try {
-			const client = twilio(
-				process.env.TWILIO_ACCOUNT_SID,
-				process.env.TWILIO_AUTH_TOKEN
-			);
-
-			await client.messages.create({
-				from: process.env.WHATSAPP_FROM_NUMBER,
-				to: from,
-				body: 
-					"Sorry, something went wrong. Please try again in a moment, " +
-					"or a team member will reach out shortly! 🙌"
-			});
-		} catch (fallbackError) {
-			console.error("Failed to send fallback message:", fallbackError);
-		}
-
-			res.sendStatus(500).end();
-	}
-});
-
-// Health check endpoint
-app.get("/health", (req, res) => {
-	res.json({
-		status: "ok",
-		message: "Bluemins WhatsApp bot is running",
-		timestamp: new Date().toISOString()
-	});
-});
-
-// Root endpoint
-app.get("/", (req, res) => {
-	res.json({
-		name: "Bluemins WhatsApp Bot",
-		version: "1.0.0",
-		status: "running",
-		endpoints: {
-			health: "GET /health",
-			webhook: "POST /whatsapp"
-		}
-	});
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-	console.error("Server error:", err);
-	res.status(500).json({
-		error: "Internal server error",
-		message: process.env.NODE_ENV === "development" ? err.message : undefined
-	});
-});
-
-// 404 handler
-app.use((req, res) => {
-	res.status(404).json({
-		error: "Not found",
-		path: req.path
-	});
-});
-
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-	console.log("╔════════════════════════════════════════╗");
-	console.log("║    🤖 Bluemins WhatsApp Bot Started     ║");
-	console.log("╚════════════════════════════════════════╝");
-	console.log(`\n📡 Listening on port ${PORT}`);
-	console.log(`🏥 Health check: http://localhost:${PORT}/health`);
-	console.log(`📱 WhatsApp webhook: http://localhost:${PORT}/whatsapp`);
-	console.log("\n✨ Configure webhook in Twilio console!");
-	console.log("💡 See SETUP_GUIDE.md for full instructions\n");
-});
-
-// Graceful shutdown
-process.on("SIGINT", () => {
-	console.log("\n🛑 Shutting down gracefully...");
-	process.exit(0);
-});
+process.on("SIGINT",  () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

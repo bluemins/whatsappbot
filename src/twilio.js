@@ -25,7 +25,7 @@ export function validateTwilioWebhook({ req, publicUrl }) {
  */
 export async function sendWhatsAppMessage({ to, body }) {
 	const client = getTwilioClient();
-	const from = process.env.TWILIO_WHATSAPP_FROM;
+	const from = process.env.WHATSAPP_FROM_NUMBER;
 	if (!from) throw new Error("Missing TWILIO_WHATSAPP_FROM");
 
 	return client.messages.create({
