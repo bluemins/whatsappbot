@@ -432,29 +432,8 @@ function handleAskAddress(text, session) {
     session: {
       ...session,
       stage: STAGES.CONFIRM,
-      draft: { ...session.draft, text, notes },
+      draft: { ...session.draft, text },
     },
-  };
-}
-
-/**
- * handleAskNotes — uses items array
- */
-function handleAskNotes(text, session) {
-  if (/^(cancel|stop|quit|exit)\b/i.test(text.trim())) {
-    return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
-  }
-  const SKIP = /^(skip|no|none|nil|nahi|nothing|n\/a|-)$/i;
-  const notes = SKIP.test(text.trim()) ? "None" : text.trim();
-  const { items, name, phone, address } = session.draft;
-  const total = calcTotal(items);
-
-  return {
-    reply: formatMsg(MSG.CONFIRM, {
-      ITEMS_TABLE: buildItemsTable(items),
-      NAME: name, PHONE: phone, ADDRESS: address, NOTES: notes, TOTAL: total
-    }),
-    session: { ...session, stage: STAGES.CONFIRM, draft: { ...session.draft, notes } },
   };
 }
 

@@ -42,30 +42,30 @@ export const MSG = {
     "1️⃣  1L     — ₹100\n" +
     "2️⃣  500ml  — ₹150\n" +
     "3️⃣  250ml  — ₹160\n\n" +
-    "Try: reply 1 for 1L \n "+
-    "Try: reply 1 and 3 for 1L and 250ml \n"+
-     "Try: reply 3 for 250ml \n",
+    "*Try: replying* 1       *for 1L \n "+
+    "*Try: replying* 1 and 3 *for 1L and 250ml \n"+
+    "*Try: replying* 3       *for 250ml \n",
 
   SIZE_INVALID:
     "Please pick one or more sizes:\n\n" +
     "1️⃣  1L     — ₹100\n" +
     "2️⃣  500ml  — ₹150\n" +
     "3️⃣  250ml  — ₹160\n\n" +
-    "Try: reply 1 *for 1L* \n"+
-    "Try: reply 1 and 3 *for 1L and 250ml* \n"+
-     "Try: reply 3 *for 250ml* \n",
+    "*Try: replying* 1       *for 1L* \n"+
+    "*Try: replying* 1 and 3 *for 1L and 250ml* \n"+
+    "*Try: replying* 3       *for 250ml* \n",
 
 // ✅ NEW: Clear examples of quantity options
   ASK_QTY:
     "You chose: *{{ITEMS_SUMMARY}}* ✅\n\n" +
     "How many boxes for each?\n\n" +
     "**Option 1 — Same for all:**\n" +
-    "   Reply: 2  → All items get 2 boxes\n\n" +
+    "*Try Replying:* 2  → All items get 2 boxes\n\n" +
     "**Option 2 — Different for each:**\n" +
-    "   Reply: 2 of 1L and 3 of 500ml\n" +
+    "*Try Replying:* 2 of 1L and 3 of 500ml\n" +
     "   Or: *1L: 2, 500ml: 3*\n\n" +
     "**Option 3 — By position:**\n" +
-    "   Reply: 2, 3  → First item gets 2, second gets 3\n\n" +
+    "*Try Replying:* 2, 3  *→ First item gets 2, second gets 3*\n\n" +
     "(Each item: 1–100 boxes)",
 
   QTY_INVALID:
@@ -115,7 +115,6 @@ export const MSG = {
   CONFIRMED:
     "✅ *Order Confirmed!*\n\n" +
     "Your order ID is *{{ORDER_ID}}*.\n" +
-    "We will deliver to {{ADDRESS}} soon.\n" +
     "You'll receive updates on {{PHONE}}.\n\n" +
     "Thank you for choosing *Bluemins*! 💙",
 
