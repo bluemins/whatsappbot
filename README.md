@@ -1,15 +1,15 @@
-Bluemins WhatsApp Bot - Repository Overview
-What this is
+**Bluemins WhatsApp Bot - Repository Overview**
+_What this is_
 A deterministic WhatsApp order-taking bot for Bluemins (a beverage/product business) built with Node.js and Express. It takes customer orders through WhatsApp via Twilio, collects delivery details through a guided state machine conversation, and writes confirmed orders to Google Sheets. No AI involved — all logic is regex-based intent matching and predefined conversation flows.
 
-Stack
+_Stack_
 Language: JavaScript (Node.js v18+)
 Framework / runtime: Express.js (HTTP server) + Twilio SDK (WhatsApp integration)
 Notable libraries:
 ioredis — session state persistence (30-min TTL)
 twilio — WhatsApp messaging & webhook signature validation
 dotenv — environment configuration
-How it's organized
+_How it's organized_
 Code
 src/
   server.js       Express app, Twilio webhook handler, message deduplication
@@ -26,8 +26,8 @@ data/
   faq.json        17 FAQ entries (products, pricing, delivery, allergens, etc.)
 
 package.json      Dependencies: express, ioredis, twilio, morgan, dotenv, uuid
-How it fits together:
 
+_How it fits together:_
 Request arrival: Twilio POSTs to /twilio/whatsapp with message body, sender ID, and signature.
 Validation & dedup: Server validates Twilio signature, checks if this MessageSid was already processed (in-memory Set of 1000 recent), and fetches the user's session from Redis.
 Routing: router.js dispatches based on priority:
@@ -39,7 +39,7 @@ State machine: Each stage (ASK_SIZE, ASK_QTY, etc.) validates input, advances th
 Order persistence: On confirmation, writeOrder() POSTs the order payload to a Google Apps Script webhook, which appends it to a Google Sheet. Order ID is generated at write time (ORD-<timestamp>-<uuid>).
 Session save: Updated session is written back to Redis with a 30-minute TTL, refreshed on every message.
 Reply send: Bot sends the reply text back via Twilio REST API.
-How to run it
+_How to run it_
 bash
 # Install dependencies
 npm install
@@ -69,7 +69,7 @@ npm start
 curl http://localhost:3000/health
 Key requirements:
 
-Redis running (default localhost:6379)
+_Redis running (default localhost:6379)_
 Twilio account with WhatsApp sandbox or production sender
 Google Apps Script webhook URL for order writes
 ngrok or similar to expose localhost:3000 to the public internet for Twilio webhooks
