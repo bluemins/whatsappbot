@@ -48,38 +48,37 @@ export function generateOrderId() {
  */
 export async function writeOrder(draft, from) {
   const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-
   if (!webhookUrl) {
-    // Hard fail — developer must configure this before going live
-    throw new Error(
-      "GOOGLE_SHEETS_WEBHOOK_URL is not set in environment variables."
-    );
+    throw new Error("GOOGLE_SHEETS_WEBHOOK_URL is not set in environment variables.");
   }
 
-  // Generate a unique order ID at write time (not at draft time)
   const orderId = generateOrderId();
 
-  // Calculate total at write time so the sheet always has the correct value
-  const total = draft.price * draft.quantity;
+  // Calculate total from items array (replaces old price * quantity)
+  const total = draft.items.reduce((sum, i) => sum + i.price * i.qty, 0);
 
-  // Payload keys must match exactly what your Apps Script expects
+  // Flatten items into a readable string for the spreadsheet column
+  // e.g. "1L×2, 500ml×3"
+  const itemsSummary = draft.items.map(i => `${i.size}×${i.qty}`).join(", ");
+
   const payload = {
     orderId,
-    timestamp:  new Date().toISOString(),
-    from,                                   // WhatsApp number, audit only
-    size:       draft.size,
-    sku:        draft.sku,
-    quantity:   draft.quantity,
-    unitPrice:  draft.price,
+    timestamp:    new Date().toISOString(),
+    from,
+    // Single consolidated items column — easier for the spreadsheet to read
+    items:        itemsSummary,
+    // Also send full JSON for any Apps Script that needs to expand it
+    itemsDetail:  JSON.stringify(draft.items),
     total,
-    name:       draft.name,
-    phone:      draft.phone,
-    address:    draft.address,
-    notes:      draft.notes || "",
-    status:     "CONFIRMED",
+    name:         draft.name,
+    phone:        draft.phone,
+    address:      draft.address,
+    //notes:        draft.notes || "",
+    status:       "CONFIRMED",
   };
 
-  console.log(`📤 Writing order ${orderId} to Sheets...`);
+  console.log(`📤 Writing order ${orderId} to Sheets — items: ${itemsSummary}`);
+
 
   // ── HTTP call with one retry ──────────────────────────────
   let lastError;

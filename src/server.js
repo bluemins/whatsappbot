@@ -148,7 +148,7 @@ app.post("/twilio/whatsapp", async (req, res) => {
 
   const userText = rawText.trim();
   console.log(`📱 [${sid}] from ${from}: ${userText}`);
-
+  console.warn("userText --- " , userText);
   // ── Step 3: Respond 200 with EMPTY BODY immediately ────────
   //
   // ✅ CRITICAL FIX: Use res.status(200).end() NOT res.sendStatus(200)
@@ -190,7 +190,7 @@ app.post("/twilio/whatsapp", async (req, res) => {
   // Deterministic dispatcher — no AI, pure regex + state machine.
   let reply;
   let newSession;
-
+  console.warn("Deterministic dispatcher — no AI, pure regex + state machine  --- " );
   try {
     ({ reply, newSession } = await route(userText, session, from));
   } catch (err) {

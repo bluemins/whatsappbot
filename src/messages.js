@@ -34,61 +34,41 @@ export const MSG = {
     "Type *order* to buy, *price* to see products, or *help* for options.",
 
   // ── Order flow ────────────────────────────────────────────
+ // src/messages.js — updated strings for multi-item support
   ORDER_START:
     "Great! Let's place your order. 🛒\n\n" +
-    "Which size would you like?\n" +
-    "Reply with the *number*:\n\n" +
+    "Which size(s) would you like?\n" +
+    "Reply with *numbers* or *sizes* — you can pick multiple!\n\n" +
     "1️⃣  1L     — ₹100\n" +
     "2️⃣  500ml  — ₹150\n" +
-    "3️⃣  250ml  — ₹160",
+    "3️⃣  250ml  — ₹160\n\n" +
+    "Examples: *1* or *1 and 2* or *1L and 500ml*",
 
   SIZE_INVALID:
-    "Please reply with *1*, *2*, or *3* to choose a size:\n\n" +
+    "Please pick one or more sizes:\n\n" +
     "1️⃣  1L     — ₹100\n" +
     "2️⃣  500ml  — ₹150\n" +
-    "3️⃣  250ml  — ₹160",
+    "3️⃣  250ml  — ₹160\n\n" +
+    "Try: *1*, *1 and 3*, or *1L, 250ml*",
 
-  // {{SIZE}} {{PRICE}}
+  // {{ITEMS_SUMMARY}} is e.g. "1L × 2 + 500ml × 1"
   ASK_QTY:
-    "You chose *{{SIZE}}* (₹{{PRICE}} each). ✅\n\n" +
-    "How many boxes would you like? (e.g. *2*)",
+    "You chose: *{{ITEMS_SUMMARY}}* ✅\n\n" +
+    "How many boxes would you like? (e.g. *2*)\n" +
+    "Same qty for all, or specify: *2 of 1L and 3 of 500ml*",
 
   QTY_INVALID:
-    "Please enter a valid quantity (a number between 1 and 100).",
+    "Please enter valid quantities (numbers between 1–100).\n" +
+    "Example: *2* (applies to all) or *2 of 1L and 3 of 500ml*",
 
-  // {{QTY}} {{SIZE}}
+  // {{QTY_SUMMARY}} e.g. "1L × 2, 500ml × 3"
   ASK_NAME:
-    "Got it — *{{QTY}} × {{SIZE}}*. 👍\n\n" +
+    "Got it — *{{QTY_SUMMARY}}*. 👍\n\n" +
     "What is your *full name* for the order?",
 
-  ASK_PHONE:
-    "Thank you, *{{NAME}}*! 📋\n\n" +
-    "Please share your *10-digit mobile number*:",
-
-  PHONE_INVALID:
-    "That doesn't look like a valid 10-digit number. Please try again.\n" +
-    "Example: *9876543210*",
-
-  ASK_ADDRESS:
-    "Got your number. 📞\n\n" +
-    "What is your *delivery address*? (include area and city)",
-
-  // {{NAME}} {{SIZE}} {{QTY}} {{PHONE}} {{ADDRESS}} {{TOTAL}}
-  ASK_NOTES:
-    "Almost done! 🙌\n\n" +
-    "Here's your order so far:\n" +
-    "• *Item:* {{SIZE}} × {{QTY}}\n" +
-    "• *Name:* {{NAME}}\n" +
-    "• *Phone:* {{PHONE}}\n" +
-    "• *Address:* {{ADDRESS}}\n" +
-    "• *Total:* ₹{{TOTAL}}\n\n" +
-    "Any *special notes* (e.g. delivery time)?\n" +
-    "Type your note or reply *skip* to continue.",
-
-  // {{NAME}} {{SIZE}} {{QTY}} {{PHONE}} {{ADDRESS}} {{TOTAL}} {{NOTES}}
   CONFIRM:
     "📦 *Order Summary*\n\n" +
-    "• Item:    *{{SIZE}} × {{QTY}}*\n" +
+    "{{ITEMS_TABLE}}" +
     "• Name:    {{NAME}}\n" +
     "• Phone:   {{PHONE}}\n" +
     "• Address: {{ADDRESS}}\n" +

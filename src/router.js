@@ -95,14 +95,6 @@ function matchIntent(text) {
 function handleIntent(intent, session) {
   switch (intent) {
     case "ORDER": {
-      // Optional: block orders outside business hours
-      // Remove the if-block below if you want 24/7 ordering
-      if (!isWithinBusinessHours()) {
-        return {
-          reply: MSG.OUT_OF_HOURS + "\n\nType *order* again to proceed anyway.",
-          newSession: session, // don't start flow yet
-        };
-      }
       const { reply, session: newSession } = startOrder(session);
       return { reply, newSession };
     }
@@ -154,7 +146,7 @@ function handleIntent(intent, session) {
  */
 export async function route(text, session, from) {
   const trimmed = (text || "").trim();
-
+  console.warn("route ---------- trimmed   --- " );
   if (!trimmed) {
     return { reply: MSG.FALLBACK, newSession: session };
   }

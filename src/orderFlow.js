@@ -1,134 +1,181 @@
 /**
- * orderFlow.js
- * ─────────────────────────────────────────────────────────────
- * Deterministic order-taking state machine.
- * Zero AI involvement — every transition is a regex or keyword check.
+ * orderFlow.js — updated for multi-item support
  *
- * Stage progression (linear, one direction):
+ * Key change: draft.items is now an array of { size, sku, price, qty }
+ * instead of flat size/price/sku/quantity fields.
  *
- *   null → ASK_SIZE → ASK_QTY → ASK_NAME → ASK_PHONE
- *       → ASK_ADDRESS → ASK_NOTES → CONFIRM → [DONE / cancel]
- *
- * Each exported function receives (userText, session) and returns:
- *   { reply: string, session: updatedSession }
- *
- * The caller (router.js) is responsible for persisting the session.
- * ─────────────────────────────────────────────────────────────
+ * draft = {
+ *   items: [{ size: "1L", sku: "BM-1L", price: 100, qty: 2 },
+ *           { size: "500ml", sku: "BM-500", price: 150, qty: 1 }],
+ *   name, phone, address, notes
+ * }
  */
 
 import { PRODUCTS, MSG, formatMsg } from "./messages.js";
 import { writeOrder }                from "./sheets.js";
 
-// ── Stage constants ───────────────────────────────────────────
-// Exported so router.js can check session.stage without string literals
 export const STAGES = {
   ASK_SIZE:    "ASK_SIZE",
   ASK_QTY:     "ASK_QTY",
   ASK_NAME:    "ASK_NAME",
   ASK_PHONE:   "ASK_PHONE",
   ASK_ADDRESS: "ASK_ADDRESS",
-  ASK_NOTES:   "ASK_NOTES",
   CONFIRM:     "CONFIRM",
 };
 
-// ── Field parsers ─────────────────────────────────────────────
-// Each parser returns the extracted value or null on failure.
-// Kept small and testable — no side effects.
-
+// ── Multi-item size parser ────────────────────────────────────
 /**
- * parseSize(text)
- * Accept:
- *   • Digit reply from the menu (1, 2, 3)
- *   • Direct size label (1l, 500ml, 250ml) — case-insensitive
+* parseSizes(text)
+ * Tokenizes by whitespace/comma/plus/ampersand/and-word.
+ * Each token is looked up in PRODUCTS by digit key or size label.
+ * Does NOT collapse whitespace — that was the bug.
+ *
+ * Examples:
+ *   "1 and 2"  → [1L, 500ml]   ✅
+ *   "1"        → [1L]          ✅
+ *   "1, 3"     → [1L, 250ml]   ✅
+ *   "1L"       → [1L]          ✅
+ *   "all"      → [1L, 500ml, 250ml] ✅
  *
  * @param {string} text
- * @returns {{ label, price, sku } | null}
+ * @returns {Array<{label, price, sku}>}
  */
-function parseSize(text) {
-  const t = text.trim().toLowerCase().replace(/\s+/g, "");
-  return PRODUCTS[t] || null;
-}
+function parseSizes(text) {
+  const lower = text.trim().toLowerCase();
 
-/**
- * parseQty(text)
- * Extract the first integer from the message.
- * Accepts: "2", "two boxes", "order 3", "I want 5 please"
- * Rejects anything > 100 (sanity limit) or < 1.
- *
- * @param {string} text
- * @returns {number | null}
- */
-function parseQty(text) {
-  // Written numbers map for single-digit convenience
-  const wordMap = {
-    one:1, two:2, three:3, four:4, five:5,
-    six:6, seven:7, eight:8, nine:9, ten:10,
-  };
-
-  const lower = text.toLowerCase();
-
-  // Check word numbers first
-  for (const [word, num] of Object.entries(wordMap)) {
-    if (new RegExp(`\\b${word}\\b`).test(lower)) return num;
+  // "all" shortcut
+  if (/\ball\b/.test(lower)) {
+    return [PRODUCTS["1"], PRODUCTS["2"], PRODUCTS["3"]];
   }
 
-  // Extract first digit sequence
-  const match = text.match(/\d+/);
-  if (!match) return null;
+  const found = [];
+  const seen  = new Set(); // prevent duplicates e.g. "1 and 1"
 
-  const n = parseInt(match[0], 10);
-  if (n < 1 || n > 100) return null;
-  return n;
+  // Split on: whitespace, comma, plus, ampersand, or the word "and"
+  // filter(Boolean) removes the empty strings that the split produces
+  const tokens = lower.split(/[\s,+&]+|\band\b/).filter(Boolean);
+
+  for (const token of tokens) {
+    const product = PRODUCTS[token]; // matches "1","2","3","1l","500ml","250ml"
+    if (product && !seen.has(product.sku)) {
+      found.push(product);
+      seen.add(product.sku);
+    }
+  }
+
+  return found;
 }
 
 /**
- * parsePhone(text)
- * Extracts a 10-digit Indian mobile number.
- * Accepts: "+91 9876543210", "09876543210", "9876543210"
+ * buildItemsSummary(items)
+ * "1L, 500ml" — used in the ASK_QTY prompt so customer knows what they picked.
  *
- * @param {string} text
- * @returns {string | null}  Normalised 10-digit string or null
+ * @param {Array<{size}>} items
+ * @returns {string}
  */
-function parsePhone(text) {
-  // Strip spaces, dashes, dots, parens
-  const digits = text.replace(/[\s\-().+]/g, "");
+function buildItemsSummary(items) {
+  return items.map(i => i.size).join(", ");
+}
 
-  // Strip country code if present (91 prefix followed by 10 digits)
-  const stripped = digits.replace(/^(0091|91|0)/, "");
+// ── Multi-item quantity parser ────────────────────────────────
+/**
+ * parseQuantities(text, items)
+ * Parses quantities for one or more items.
+ *
+ * Handles:
+ *   "2"                    → all items get qty 2
+ *   "2 of 1L and 3 of 500ml" → per-item qty
+ *   "2, 3"                 → first item=2, second item=3 (positional)
+ *
+ * @param {string} text  - Raw customer message
+ * @param {Array}  items - Items from draft (carries size/sku/price)
+ * @returns {Array<{size,sku,price,qty}>|null} - null = failed to parse
+ */
+function parseQuantities(text, items) {
+  const lower = text.toLowerCase();
 
-  if (/^\d{10}$/.test(stripped)) return stripped;
-  return null;
+  // Single number → apply to all items (most common case: "2")
+  const singleMatch = text.match(/^\s*(\d+)\s*$/);
+  if (singleMatch) {
+    const qty = parseInt(singleMatch[1], 10);
+    if (qty < 1 || qty > 100) return null;
+    return items.map(item => ({ ...item, qty }));
+  }
+
+  // Named quantities: "2 of 1L" or "3 of 500ml" or "2 1L"
+  // Build a result map keyed by sku
+  const result = new Map(items.map(i => [i.sku, { ...i, qty: null }]));
+
+  // Pattern: optional "N of SIZE" or "N SIZE" — captures number + size label
+  const namedPattern = /(\d+)\s*(?:of\s*)?(1l|500ml|250ml|1\s*liter|half\s*liter)/gi;
+  let match;
+  while ((match = namedPattern.exec(lower)) !== null) {
+    const qty  = parseInt(match[1], 10);
+    const size = match[2].replace(/\s/g, "").replace("1liter", "1l").replace("halfliter", "500ml");
+    const product = PRODUCTS[size];
+    if (product && result.has(product.sku)) {
+      result.get(product.sku).qty = qty;
+    }
+  }
+
+  // Positional fallback: "2, 3" → first item=2, second=3
+  if ([...result.values()].some(i => i.qty === null)) {
+    const positional = [...text.matchAll(/\b(\d+)\b/g)].map(m => parseInt(m[1], 10));
+    let idx = 0;
+    for (const item of result.values()) {
+      if (item.qty === null && idx < positional.length) {
+        item.qty = positional[idx++];
+      }
+    }
+  }
+
+  // Validate all items have a qty
+  const resolved = [...result.values()];
+  if (resolved.some(i => !i.qty || i.qty < 1 || i.qty > 100)) return null;
+  return resolved;
 }
 
 /**
- * isCancelIntent(text)
- * Detect cancel/stop/no keywords anywhere in the message.
- *
- * @param {string} text
- * @returns {boolean}
+ * buildQtySummary(items)
+ * "1L × 2, 500ml × 3" — used in ASK_NAME prompt.
  */
+function buildQtySummary(items) {
+  return items.map(i => `${i.size} × ${i.qty}`).join(", ");
+}
+
+/**
+ * buildItemsTable(items)
+ * Bullet-list suitable for CONFIRM and ASK_NOTES messages.
+ * "• Items:  1L × 2  (₹200)\n•         500ml × 3  (₹450)\n"
+ */
+function buildItemsTable(items) {
+  return items.map(i => `• Items:  *${i.size} × ${i.qty}*  (₹${i.price * i.qty})\n`).join("");
+}
+
+/**
+ * calcTotal(items)
+ * Sum price × qty across all line items.
+ *
+ * @param {Array<{price, qty}>} items
+ * @returns {number}
+ */
+function calcTotal(items) {
+  return items.reduce((sum, i) => sum + i.price * i.qty, 0);
+}
+
+// ── Cancel / confirm helpers ──────────────────────────────────
 function isCancelIntent(text) {
   return /\b(cancel|stop|quit|no|nope|nahi|band|done|exit)\b/i.test(text);
 }
-
-/**
- * isConfirmIntent(text)
- * Detect yes/confirm keywords.
- *
- * @param {string} text
- * @returns {boolean}
- */
 function isConfirmIntent(text) {
   return /\b(yes|yeah|yep|confirm|ok|okay|haan|ha|sure|correct)\b/i.test(text);
 }
 
 // ── Stage handlers ────────────────────────────────────────────
-// Each handler is a pure function:  (text, session, from) → { reply, session }
-// The session object is treated as immutable — always spread before mutating.
 
 /**
- * handleAskSize
- * Validate the customer's size choice and advance to ASK_QTY.
+ * handleAskSize — REPLACE the old single-item handler entirely
+ * Stores items as array with qty:null (filled in ASK_QTY stage)
  */
 function handleAskSize(text, session) {
   // Allow cancel at any stage
@@ -136,265 +183,229 @@ function handleAskSize(text, session) {
     return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
   }
 
-  const product = parseSize(text);
+  const products = parseSizes(text);
 
-  if (!product) {
-    // Re-prompt with the menu
+  if (products.length === 0) {
     return { reply: MSG.SIZE_INVALID, session };
   }
 
-  // Advance stage, persist chosen product fields in draft
+  // Map to draft items — qty is null until ASK_QTY fills it in
+  const items = products.map(p => ({ size: p.label, sku: p.sku, price: p.price, qty: null }));
+
+  // Build a readable summary for the ASK_QTY prompt e.g. "1L, 500ml"
+  const itemsSummary = items.map(i => i.size).join(", ");
+
   return {
-    reply: formatMsg(MSG.ASK_QTY, { SIZE: product.label, PRICE: product.price }),
+    reply: formatMsg(MSG.ASK_QTY, { ITEMS_SUMMARY: itemsSummary }),
     session: {
       ...session,
       stage: STAGES.ASK_QTY,
-      draft: { ...session.draft, size: product.label, price: product.price, sku: product.sku },
+      draft: { ...session.draft, items },
     },
   };
 }
 
 /**
  * handleAskQty
- * Parse quantity and advance to ASK_NAME.
+ * Parses quantity and applies it to draft.items[].qty
+ * Supports: single number (applies to all), or per-item "2 of 1L and 3 of 500ml"
  */
 function handleAskQty(text, session) {
   if (isCancelIntent(text)) {
     return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
   }
 
-  const qty = parseQty(text);
+  const items = session.draft.items;
 
-  if (!qty) {
-    return { reply: MSG.QTY_INVALID, session };
+  // Single number → apply to all items (most common: customer types "2")
+  const singleMatch = text.trim().match(/^(\d+)$/);
+  if (singleMatch) {
+    const qty = parseInt(singleMatch[1], 10);
+    if (qty < 1 || qty > 100) return { reply: MSG.QTY_INVALID, session };
+
+    const resolved = items.map(item => ({ ...item, qty }));
+    const qtySummary = resolved.map(i => `${i.size} × ${i.qty}`).join(", ");
+
+    return {
+      reply: formatMsg(MSG.ASK_NAME, { QTY_SUMMARY: qtySummary }),
+      session: { ...session, stage: STAGES.ASK_NAME, draft: { ...session.draft, items: resolved } },
+    };
   }
 
+  // Per-item qty: "2 of 1L and 3 of 500ml" or positional "2, 3"
+  const resolved = [...items]; // clone
+  let matchedAny = false;
+
+  // Named pattern: "N of SIZE" or "N SIZE"
+  const namedRe = /(\d+)\s*(?:of\s*)?(1l|500ml|250ml)/gi;
+  let m;
+  while ((m = namedRe.exec(text.toLowerCase())) !== null) {
+    const qty  = parseInt(m[1], 10);
+    const key  = m[2]; // "1l", "500ml", "250ml"
+    const prod = PRODUCTS[key];
+    if (prod) {
+      const idx = resolved.findIndex(i => i.sku === prod.sku);
+      if (idx !== -1) { resolved[idx] = { ...resolved[idx], qty }; matchedAny = true; }
+    }
+  }
+
+  // Positional fallback: "2, 3" → first item gets 2, second gets 3
+  if (!matchedAny) {
+    const nums = [...text.matchAll(/\b(\d+)\b/g)].map(x => parseInt(x[1], 10));
+    nums.forEach((qty, idx) => {
+      if (idx < resolved.length) resolved[idx] = { ...resolved[idx], qty };
+    });
+    matchedAny = nums.length > 0;
+  }
+
+  // Validate all items now have a valid qty
+  const allValid = resolved.every(i => i.qty && i.qty >= 1 && i.qty <= 100);
+  if (!matchedAny || !allValid) return { reply: MSG.QTY_INVALID, session };
+
+  const qtySummary = resolved.map(i => `${i.size} × ${i.qty}`).join(", ");
   return {
-    reply: formatMsg(MSG.ASK_NAME, { QTY: qty, SIZE: session.draft.size }),
-    session: {
-      ...session,
-      stage: STAGES.ASK_NAME,
-      draft: { ...session.draft, quantity: qty },
-    },
+    reply: formatMsg(MSG.ASK_NAME, { QTY_SUMMARY: qtySummary }),
+    session: { ...session, stage: STAGES.ASK_NAME, draft: { ...session.draft, items: resolved } },
   };
 }
 
 /**
- * handleAskName
- * Capture free-text name. Minimal validation: at least 2 chars, no digits.
+ * handleAskName — unchanged logic, uses items array for summary
  */
 function handleAskName(text, session) {
   if (isCancelIntent(text)) {
     return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
   }
-
   const name = text.trim();
-
   if (name.length < 2 || /^\d+$/.test(name)) {
-    return {
-      reply: "Please enter your full name (letters only).",
-      session,
-    };
+    return { reply: "Please enter your full name (letters only).", session };
   }
-
   return {
     reply: formatMsg(MSG.ASK_PHONE, { NAME: name }),
-    session: {
-      ...session,
-      stage: STAGES.ASK_PHONE,
-      draft: { ...session.draft, name },
-    },
+    session: { ...session, stage: STAGES.ASK_PHONE, draft: { ...session.draft, name } },
   };
 }
 
 /**
- * handleAskPhone
- * Validate 10-digit mobile number and advance to ASK_ADDRESS.
+ * handleAskPhone — unchanged
  */
 function handleAskPhone(text, session) {
   if (isCancelIntent(text)) {
     return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
   }
-
-  const phone = parsePhone(text);
-
-  if (!phone) {
+  const digits  = text.replace(/[\s\-().+]/g, "");
+  const stripped = digits.replace(/^(0091|91|0)/, "");
+  if (!/^\d{10}$/.test(stripped)) {
     return { reply: MSG.PHONE_INVALID, session };
   }
-
   return {
     reply: MSG.ASK_ADDRESS,
-    session: {
-      ...session,
-      stage: STAGES.ASK_ADDRESS,
-      draft: { ...session.draft, phone },
-    },
+    session: { ...session, stage: STAGES.ASK_ADDRESS, draft: { ...session.draft, phone: stripped } },
   };
 }
 
 /**
- * handleAskAddress
- * Capture delivery address (free text, min 10 chars).
+ * handleAskAddress — now uses items array to build total
  */
 function handleAskAddress(text, session) {
   if (isCancelIntent(text)) {
     return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
   }
-
   const address = text.trim();
-
   if (address.length < 10) {
-    return {
-      reply: "Please provide a more complete address (street, area, city).",
-      session,
-    };
+    return { reply: "Please provide a more complete address (street, area, city).", session };
   }
-
-  const { size, quantity, name, phone } = session.draft;
-  const total = session.draft.price * quantity;
+  const { items, name, phone } = session.draft;
+  const total = calcTotal(items);
 
   return {
-    reply: formatMsg(MSG.ASK_NOTES, { SIZE: size, QTY: quantity, NAME: name, PHONE: phone, ADDRESS: address, TOTAL: total }),
-    session: {
-      ...session,
-      stage: STAGES.ASK_NOTES,
-      draft: { ...session.draft, address },
-    },
+    reply: formatMsg( {
+      ITEMS_TABLE: buildItemsTable(items),
+      NAME: name, PHONE: phone, ADDRESS: address, TOTAL: total
+    }),
+    session: { ...session, draft: { ...session.draft, address } },
   };
 }
 
 /**
- * handleAskNotes
- * Capture optional special notes. "skip" / "no" / "none" → empty string.
- * Then advance to CONFIRM and show the full order summary.
+ * handleAskNotes — uses items array
  */
 function handleAskNotes(text, session) {
-  if (isCancelIntent(text) && !text.trim().toLowerCase().startsWith("no note")) {
-    // "no" here might mean "no notes" rather than cancel — check context
-    // If the raw text is just "no", treat as skip, not cancel
-    if (/^(cancel|stop|quit|exit)\b/i.test(text.trim())) {
-      return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
-    }
+  if (/^(cancel|stop|quit|exit)\b/i.test(text.trim())) {
+    return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
   }
-
-  const SKIP_PATTERNS = /^(skip|no|none|nil|nahi|nothing|n\/a|-)$/i;
-  const notes = SKIP_PATTERNS.test(text.trim()) ? "None" : text.trim();
-
-  const { size, quantity, name, phone, address, price } = session.draft;
-  const total = price * quantity;
+  const SKIP = /^(skip|no|none|nil|nahi|nothing|n\/a|-)$/i;
+  const notes = SKIP.test(text.trim()) ? "None" : text.trim();
+  const { items, name, phone, address } = session.draft;
+  const total = calcTotal(items);
 
   return {
-    reply: formatMsg(MSG.CONFIRM, { SIZE: size, QTY: quantity, NAME: name, PHONE: phone, ADDRESS: address, NOTES: notes, TOTAL: total }),
-    session: {
-      ...session,
-      stage: STAGES.CONFIRM,
-      draft: { ...session.draft, notes },
-    },
+    reply: formatMsg(MSG.CONFIRM, {
+      ITEMS_TABLE: buildItemsTable(items),
+      NAME: name, PHONE: phone, ADDRESS: address, NOTES: notes, TOTAL: total
+    }),
+    session: { ...session, stage: STAGES.CONFIRM, draft: { ...session.draft, notes } },
   };
 }
 
 /**
- * handleConfirm
- * Customer replies yes/no to the summary.
- * On "yes": write to Sheets, clear session, send confirmation.
- * On "no": cancel, clear session.
- *
- * This is the only async handler because it calls writeOrder().
- *
- * @param {string} text
- * @param {Object} session
- * @param {string} from    - WhatsApp sender ID (passed to writeOrder for audit)
- * @returns {Promise<{ reply: string, session: Object }>}
+ * handleConfirm — writes multi-item order to Sheets
  */
 async function handleConfirm(text, session, from) {
   if (isCancelIntent(text) && !isConfirmIntent(text)) {
     return { reply: MSG.CANCELLED, session: { stage: null, draft: {} } };
   }
-
   if (!isConfirmIntent(text)) {
-    // Neither yes nor no — re-show the prompt
-    return {
-      reply: "Please reply *yes* to confirm your order or *no* to cancel.",
-      session,
-    };
+    return { reply: "Please reply *yes* to confirm your order or *no* to cancel.", session };
   }
 
-  // ── Write to Google Sheets ────────────────────────────────
   try {
     const { orderId, total } = await writeOrder(session.draft, from);
-
     return {
       reply: formatMsg(MSG.CONFIRMED, {
         ORDER_ID: orderId,
-        ADDRESS:  session.draft.address,
-        PHONE:    session.draft.phone,
-        TOTAL:    total,
+        ADDRESS: session.draft.address,
+        PHONE: session.draft.phone,
+        TOTAL: total,
       }),
-      session: { stage: null, draft: {} }, // clear session on success
+      session: { stage: null, draft: {} },
     };
-
   } catch (err) {
-    // Sheets write failed — don't lose the order, ask customer to retry
     console.error("Order write failed:", err.message);
     return {
       reply:
-        "Sorry, there was a problem saving your order. Please reply *yes* to try again " +
-        "or contact us directly at " + (process.env.BRAND_PHONE || "our support number") + ".",
-      session, // keep session intact so customer can retry
+        "Sorry, there was a problem saving your order. Reply *yes* to retry or " +
+        "contact us at " + (process.env.BRAND_PHONE || "our support number") + ".",
+      session, // keep session intact for retry
     };
   }
 }
 
 // ── Stage dispatch table ──────────────────────────────────────
-// Maps stage name → handler function.
-// Sync handlers are wrapped to return a resolved promise for uniform interface.
-
 const HANDLERS = {
-  [STAGES.ASK_SIZE]:    (text, session, from) => Promise.resolve(handleAskSize(text, session)),
-  [STAGES.ASK_QTY]:     (text, session, from) => Promise.resolve(handleAskQty(text, session)),
-  [STAGES.ASK_NAME]:    (text, session, from) => Promise.resolve(handleAskName(text, session)),
-  [STAGES.ASK_PHONE]:   (text, session, from) => Promise.resolve(handleAskPhone(text, session)),
-  [STAGES.ASK_ADDRESS]: (text, session, from) => Promise.resolve(handleAskAddress(text, session)),
-  [STAGES.ASK_NOTES]:   (text, session, from) => Promise.resolve(handleAskNotes(text, session)),
-  [STAGES.CONFIRM]:     handleConfirm,  // already returns a Promise
+  [STAGES.ASK_SIZE]:    (t, s, f) => Promise.resolve(handleAskSize(t, s)),
+  [STAGES.ASK_QTY]:     (t, s, f) => Promise.resolve(handleAskQty(t, s)),
+  [STAGES.ASK_NAME]:    (t, s, f) => Promise.resolve(handleAskName(t, s)),
+  [STAGES.ASK_PHONE]:   (t, s, f) => Promise.resolve(handleAskPhone(t, s)),
+  [STAGES.ASK_ADDRESS]: (t, s, f) => Promise.resolve(handleAskAddress(t, s)),
+ // [STAGES.ASK_NOTES]:   (t, s, f) => Promise.resolve(handleAskNotes(t, s)),
+  [STAGES.CONFIRM]:     handleConfirm
 };
 
-/**
- * startOrder(session)
- * Called by router.js when the customer sends an order-intent message.
- * Sets stage to ASK_SIZE and returns the size-selection menu.
- *
- * @param {Object} session - Current session (may be empty)
- * @returns {{ reply: string, session: Object }}
- */
 export function startOrder(session) {
   return {
     reply: MSG.ORDER_START,
-    session: { stage: STAGES.ASK_SIZE, draft: {} },
+    session: { stage: STAGES.ASK_SIZE, draft: { items: [] } },
   };
 }
 
-/**
- * advanceOrder(text, session, from)
- * Main entry point called by router.js when session.stage is not null.
- * Dispatches to the appropriate stage handler.
- *
- * @param {string} text    - Raw message text from customer
- * @param {Object} session - Current session from Redis
- * @param {string} from    - WhatsApp sender ID
- * @returns {Promise<{ reply: string, session: Object }>}
- */
 export async function advanceOrder(text, session, from) {
+
   const handler = HANDLERS[session.stage];
-
+    console.warn("advanceOrder ---------- handler   --- ",handler );
   if (!handler) {
-    // Unknown stage — reset and let router handle as fresh message
     console.warn(`Unknown session stage: ${session.stage} — resetting`);
-    return {
-      reply: MSG.FALLBACK,
-      session: { stage: null, draft: {} },
-    };
+    return { reply: MSG.FALLBACK, session: { stage: null, draft: {} } };
   }
-
   return handler(text, session, from);
 }
