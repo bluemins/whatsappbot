@@ -122,7 +122,6 @@ function formatStage(stage) {
     ASK_NAME:    "3️⃣  Waiting for name",
     ASK_PHONE:   "4️⃣  Waiting for phone number",
     ASK_ADDRESS: "5️⃣  Waiting for delivery address",
-    ASK_NOTES:   "6️⃣  Waiting for special notes",
     CONFIRM:     "7️⃣  Awaiting order confirmation (yes/no)",
   };
   return stageMap[stage] ?? `❓ Unknown stage: ${stage}`;
