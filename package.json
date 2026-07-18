@@ -1,19 +1,19 @@
 {
-  "name": "whatsapp-agent-demo",
-  "version": "1.0.0",
+  "name": "bluemins-whatsapp-bot",
+  "version": "2.0.0",
+  "description": "Deterministic WhatsApp order bot — no AI, Redis sessions, Google Sheets",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "dev": "node --watch src/server.js",
+    "dev":   "node --watch src/server.js",
     "start": "node src/server.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.111.0",
-    "dotenv": "^16.6.1",
-    "express": "^4.19.2",
-    "morgan": "^1.10.0",
-    "openai": "^4.0.0",
-    "twilio": "^5.3.0",
-    "uuid": "^14.0.1"
+    "dotenv":   "^16.6.1",
+    "express":  "^4.19.2",
+    "ioredis":  "^5.3.2",
+    "morgan":   "^1.10.0",
+    "twilio":   "^5.3.0",
+    "uuid":     "^11.0.0"
   }
 }
