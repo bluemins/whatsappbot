@@ -69,8 +69,24 @@ function getTwilioClient() {
 async function sendReply(to, body) {
   const from = process.env.TWILIO_WHATSAPP_FROM;
   if (!from) throw new Error("TWILIO_WHATSAPP_FROM is not set");
-
   await getTwilioClient().messages.create({ from, to, body });
+
+}
+
+/**
+ * shouldSendReply(reply)
+ * Determine if a reply should be sent to avoid unnecessary Twilio costs.
+ * Skip sending if the reply is empty, null, or just whitespace.
+ *
+ * @param {string} reply - The message to potentially send
+ * @returns {boolean} - true if reply should be sent, false otherwise
+ */
+function shouldSendReply(reply) {
+  // Don't send if reply is null, undefined, or empty after trimming
+  if (!reply || typeof reply !== 'string' || reply == 'OK') return false;
+  
+  const trimmed = reply.trim();
+  return trimmed.length > 0;
 }
 
 // ── Webhook handler ───────────────────────────────────────────
@@ -149,13 +165,19 @@ app.post("/twilio/whatsapp", async (req, res) => {
   }
 
   // ── Step 7: Send reply to customer via Twilio ────────────
-  try {
-    await sendReply(from, reply);
-    console.log(`✅ Reply sent to ${from}`);
-  } catch (err) {
-    console.error("❌ Twilio send failed:", err.message);
-    // At this point we can't send a fallback (reply channel is broken)
-    // Alert via logging / monitoring
+  // This check prevents unnecessary Twilio API calls and saves costs
+  if (shouldSendReply(reply)) {
+    try {
+      await sendReply(from, reply);
+      console.log(`✅ Reply sent to ${from}`);
+    } catch (err) {
+      console.error("❌ Twilio send failed:", err.message);
+      // At this point we can't send a fallback (reply channel is broken)
+      // Alert via logging / monitoring
+    }
+  }
+  else {
+    console.log(`⏭️  Skipped empty reply for ${from} (cost optimization)`);
   }
 });
 
