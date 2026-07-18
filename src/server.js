@@ -7,6 +7,7 @@ import express from "express";
 import twilio from "twilio";
 import { runAgent } from "./agent.js";
 import dotenv from "dotenv";
+import { validateTwilioWebhook } from "./twilio.js";
 
 dotenv.config();
 
@@ -30,28 +31,45 @@ function getOrCreateSession(from) {
 
 // Webhook endpoint for WhatsApp messages
 app.post("/twilio/whatsapp", async (req, res) => {
+	const isValid = validateTwilioWebhook({
+	req,
+	publicUrl: process.env.PUBLIC_WEBHOOK_URL,
+	});
+	if (!isValid) return res.sendStatus(403); // Reject spoofed requests
+	
 	const { Body: userText, From: from } = req.body;
 
 	console.log(`📱 Message from ${from}: ${userText}`);
 
 	// Validate request
 	if (!userText || !from) {
-		return res.sendStatus(400);
+		return res.sendStatus(400).end();
 	}
 
 	let session = getOrCreateSession(from);
+	console.log("session ------ ", session );
+let reply = `You are the WhatsApp assistant for Bluemins — a premium beverage brand.
+Our products:
+• 1L Bluemins Box  - ₹100
+• 500ml Bluemins Box - ₹150
+• 250ml Bluemins Box - ₹160
 
-	try {
-		// Run the BlueMins agent
-		const { reply, newSession } = await runAgent({ from, userText, session });
+You can:
+1) Answer product questions (sizes, pricing, details, freshness).
+2) Start an order flow (when user wants to buy).
+3) Answer FAQs (delivery time, return policy, payment methods).
+4) Start human handoff for special requests.`
+
+		// Run the Bluemins agent
+		//const { reply, newSession } = await runAgent({ from, userText, session });
 
 		// Update session for next message
-		sessions[from] = newSession;
+		//sessions[from] = newSession;
 
 		// Send response back to user
 		const client = twilio(
-			process.env.WHATSAPP_ACCOUNT_SID,
-			process.env.WHATSAPP_AUTH_TOKEN
+			process.env.TWILIO_ACCOUNT_SID,
+			process.env.TWILIO_AUTH_TOKEN
 		);
 
 		await client.messages.create({
@@ -61,15 +79,51 @@ app.post("/twilio/whatsapp", async (req, res) => {
 		});
 
 		console.log(`✅ Reply sent to ${from}`);
-		res.sendStatus(200);
+	try {
+if(session == null )
+{
+		reply = `You are the WhatsApp assistant for Bluemins — a premium beverage brand.
+Our products:
+• 1L Bluemins Box  - ₹100
+• 500ml Bluemins Box - ₹150
+• 250ml Bluemins Box - ₹160
+
+You can:
+1) Answer product questions (sizes, pricing, details, freshness).
+2) Start an order flow (when user wants to buy).
+3) Answer FAQs (delivery time, return policy, payment methods).
+4) Start human handoff for special requests.`
+
+		// Run the Bluemins agent
+		//const { reply, newSession } = await runAgent({ from, userText, session });
+
+		// Update session for next message
+		//sessions[from] = newSession;
+
+		// Send response back to user
+		const client = twilio(
+			process.env.TWILIO_ACCOUNT_SID,
+			process.env.TWILIO_AUTH_TOKEN
+		);
+
+		await client.messages.create({
+			from: process.env.WHATSAPP_FROM_NUMBER,
+			to: from,
+			body: reply
+		});
+
+		console.log(`✅ Reply sent to ${from}`);
+		//res.sendStatus(200).end(' ');
+}
+
 	} catch (error) {
 		console.error("❌ Error:", error.message);
 
 		// Send fallback message to user
 		try {
 			const client = twilio(
-				process.env.WHATSAPP_ACCOUNT_SID,
-				process.env.WHATSAPP_AUTH_TOKEN
+				process.env.TWILIO_ACCOUNT_SID,
+				process.env.TWILIO_AUTH_TOKEN
 			);
 
 			await client.messages.create({
@@ -83,7 +137,7 @@ app.post("/twilio/whatsapp", async (req, res) => {
 			console.error("Failed to send fallback message:", fallbackError);
 		}
 
-		res.sendStatus(500);
+			res.sendStatus(500).end();
 	}
 });
 

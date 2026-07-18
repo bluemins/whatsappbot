@@ -51,7 +51,7 @@ const dataToSend = {
 //const webAppUrl = "https://script.google.com/macros/s/AKfycbyjEWGmgvpuYvyu22npLrG8cBViUp60N9LikTm78nh0g4zVrlvPptlypfdiynVGXaI/exec";
 const webAppUrl = "https://script.google.com/macros/s/AKfycbzpNW1dShUoeziURo80lQMhvhuusJk-AxrzIUA1w9mxO0QGbAfvWgqpYrpVEBlah1-g/exec";
 // Send the POST request
-fetch(webAppUrl, {
+const res = await fetch(webAppUrl, {
   method: "POST",
   mode: "cors", // Changed from "no-cors"
   redirect: "follow", // Crucial for Google Apps Script redirects

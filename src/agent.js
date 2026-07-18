@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+//import Anthropic from "@anthropic-ai/sdk";
 import {
   lookupProductInfo,
   lookupProductInfo1,
@@ -9,7 +9,10 @@ import { isWithinBusinessHours } from "./bizHours.js";
 
 // ─── Client ─────────────────────────────────────────────────────────────────
 // SECURITY: Never hardcode API keys. Use environment variables only.
-const client = new Anthropic(); // reads ANTHROPIC_API_KEY automatically
+//const client = new Anthropic(); // reads ANTHROPIC_API_KEY automatically
+// const client = new Anthropic({
+// 	apiKey: process.env.ANTHROPIC_API_KEY 
+// });
 
 function mustHaveEnv(name) {
   if (!process.env[name]) throw new Error(`Missing env var: ${name}`);
@@ -27,9 +30,9 @@ function brandContext() {
 
 // ─── Products ────────────────────────────────────────────────────────────────
 const PRODUCTS = {
-  "1L": { size: "1L", price: 150, sku: "BM-1L" },
-  "500ml": { size: "500ml", price: 100, sku: "BM-500" },
-  "250ml": { size: "250ml", price: 60, sku: "BM-250" },
+  "1L": { size: "1L", price: 100, sku: "BM-1L" },
+  "500ml": { size: "500ml", price: 150, sku: "BM-500" },
+  "250ml": { size: "250ml", price: 160, sku: "BM-250" },
 };
 
 // ─── Static cached system prompts ────────────────────────────────────────────
@@ -208,7 +211,7 @@ async function extractOrderFields({ userText }) {
 
 // ─── Main agent ───────────────────────────────────────────────────────────────
 export async function runAgent({ from, userText, session }) {
-  mustHaveEnv("ANTHROPIC_API_KEY");
+  //mustHaveEnv("ANTHROPIC_API_KEY");
   const info = brandContext();
 
   // Keep last 10 turns; compute once and reuse throughout

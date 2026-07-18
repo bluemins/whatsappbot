@@ -27,7 +27,7 @@ function getLocalParts(timeZone) {
 }
 
 export function isWithinBusinessHours() {
-	const tz = process.env.RESTAURANT_TIMEZONE || "America/Chicago";
+	const tz = process.env.BRAND_TIMEZONE || "Asia/Kolkata";
 	const { weekday, minutes } = getLocalParts(tz);
 
 	const monFri = process.env.BIZ_HOURS_MON_FRI || "11:00-21:00";
