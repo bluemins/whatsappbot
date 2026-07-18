@@ -24,11 +24,12 @@
  */
 
 import express from "express";
-import twilio  from "twilio";
+//import twilio  from "twilio";
 import dotenv  from "dotenv";
 
-import { validateTwilioWebhook }                           from "./twilio.js";
+//import { validateTwilioWebhook }                           from "./twilio.js";
 import { getSession, setSession, clearSession, closeRedis } from "./session.js";
+import { getTwilioClient, sendWhatsAppMessage} from "./twilio.js";
 import { route }                                            from "./router.js";
 
 // Load .env before accessing any process.env values
@@ -82,12 +83,16 @@ function markProcessed(sid) {
  *
  * @returns {twilio.Twilio}
  */
-function getTwilioClient() {
-  return twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN
-  );
-}
+// function getTwilioClient() {
+//   // 	if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+// 	// 	throw new Error("Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
+// 	// }
+// 	return twilio(`ACd388528bcf7647fba16ada7b7b7ddb3e`, `175460e7aa0aa3002252f97f89fd9fb0`);
+//   //return twilio(
+//   //   process.env.TWILIO_ACCOUNT_SID,
+//   //   process.env.TWILIO_AUTH_TOKEN
+//   // );
+// }
 
 /**
  * sendReply(to, body)
@@ -102,9 +107,13 @@ function getTwilioClient() {
 async function sendReply(to, body) {
   const from = process.env.TWILIO_WHATSAPP_FROM;
   if (!from) throw new Error("TWILIO_WHATSAPP_FROM is not set");
-
+  console.log("in async function sendReply");
+  console.log("in async function sendReply from ", from);
+  console.log("in async function sendReply to ", to);
+  console.log("in async function sendReply body ", body);
   // REST API call — completely separate from the webhook HTTP response
-  await getTwilioClient().messages.create({ from, to, body });
+ // await getTwilioClient().messages.create({ from, to, body });
+  await sendWhatsAppMessage({ from, to, body }) ;//.sendWhatsAppMessage()
 }
 
 /**
@@ -117,6 +126,7 @@ async function sendReply(to, body) {
  */
 function shouldSendReply(reply) {
   // Reject null, undefined, non-strings, or empty/whitespace strings
+  console.log(`in shouldSendReply `);
   if (!reply || typeof reply !== "string") return false;
   return reply.trim().length > 0;
 }
@@ -127,28 +137,29 @@ app.post("/twilio/whatsapp", async (req, res) => {
   // ── Step 1: Validate Twilio signature ──────────────────────
   // Rejects any POST not originating from Twilio's servers.
   // This prevents replay attacks and spoofed webhook calls.
-  const isValid = validateTwilioWebhook({
-    req,
-    publicUrl: process.env.PUBLIC_WEBHOOK_URL + "/twilio/whatsapp",
-  });
+  // const isValid = validateTwilioWebhook({
+  //   req,
+  //   publicUrl: process.env.PUBLIC_WEBHOOK_URL + "/twilio/whatsapp",
+  // });
 
-  if (!isValid) {
-    console.warn("⚠️  Rejected request — invalid Twilio signature");
-    return res.sendStatus(403);
-  }
+  // if (!isValid) {
+  //   console.warn("⚠️  Rejected request — invalid Twilio signature");
+  //   return res.sendStatus(403);
+  // }
 
   // ── Step 2: Extract message fields ─────────────────────────
   const { Body: rawText, From: from, MessageSid: sid } = req.body;
 
-  // Validate required fields are present in the webhook payload
+  // // Validate required fields are present in the webhook payload
   if (!rawText || !from || !sid) {
     console.warn("⚠️  Missing Body, From, or MessageSid in webhook payload");
     return res.sendStatus(400);
   }
 
   const userText = rawText.trim();
-  console.log(`📱 [${sid}] from ${from}: ${userText}`);
-  console.warn("userText --- " , userText);
+  //const userText = (rawText || "").trim();
+  //console.log(`📱 [${sid}] from ${from}: ${userText}`);
+  //console.warn("userText --- " , userText);
   // ── Step 3: Respond 200 with EMPTY BODY immediately ────────
   //
   // ✅ CRITICAL FIX: Use res.status(200).end() NOT res.sendStatus(200)
@@ -222,6 +233,7 @@ app.post("/twilio/whatsapp", async (req, res) => {
   // This REST call is completely independent of the webhook response.
   if (shouldSendReply(reply)) {
     try {
+      console.log(`before sendReply `);
       await sendReply(from, reply);
       console.log(`✅ Reply sent to ${from}: "${reply.slice(0, 60)}..."`);
     } catch (err) {
